@@ -31,11 +31,33 @@
       <artifactId>opencsv</artifactId>
       <version>5.9</version>
     </dependency>
+
+    <!-- NEW: lets Javalin turn our records into JSON (ctx.json) -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>2.15.2</version>
+    </dependency>
+
+    <!-- NEW: JUnit 5 for WardCsvCleanerTest -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>5.10.2</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
     <finalName>ingestion-service</finalName>
     <plugins>
+      <!-- NEW: runs the JUnit 5 tests during mvn package / mvn test -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+      </plugin>
+
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-shade-plugin</artifactId>

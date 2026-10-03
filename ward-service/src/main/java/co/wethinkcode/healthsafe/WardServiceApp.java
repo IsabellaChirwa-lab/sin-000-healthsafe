@@ -19,6 +19,14 @@ public class WardServiceApp {
             System.err.println("ward-service: starting without data (" + e.getMessage() + "), will retry on first request");
         }
 
+        // Publish equipment failure alerts based on the loaded ward data.
+        publishEquipmentFailures(catalog.all());
+
+        StaffingEventSubscriber subscriber = new StaffingEventSubscriber();
+        subscriber.start();
+        // Ensure subscriber is closed on JVM shutdown
+        Runtime.getRuntime().addShutdownHook(new Thread(subscriber::close));
+
         Javalin app = Javalin.create().start(7031);
 
         app.get("/health", ctx -> ctx.result("OK"));
@@ -44,11 +52,44 @@ public class WardServiceApp {
 
         app.post("/wards/refresh", ctx -> {
             catalog.refresh();
+            publishEquipmentFailures(catalog.all());
             ctx.json(Map.of("wardsLoaded", catalog.size()));
         });
 
         // Ingestion down or returning garbage -> 503, not a crash and not a fake empty list.
         app.exception(IngestionUnavailableException.class, (e, ctx) ->
                 ctx.status(503).json(Map.of("error", "ward data unavailable", "detail", e.getMessage())));
+    }
+
+    private static void publishEquipmentFailures(List<WardRecord> wards) {
+        EquipmentFailurePublisher publisher = new EquipmentFailurePublisher();
+        try {
+            for (WardRecord ward : wards) {
+                if (isEquipmentFailure(ward)) {
+                    String issue = buildIssueDescription(ward);
+                    publisher.publish(ward.wardId(), issue);
+                    System.out.println("ward-service: published equipment failure alert for ward " + ward.wardId() + ": " + issue);
+                }
+            }
+        } finally {
+            publisher.close();
+        }
+    }
+
+    private static boolean isEquipmentFailure(WardRecord ward) {
+        // Equipment failure indicated by missing/invalid bedsAvailable with explanatory notes.
+        if (ward.bedsAvailable() != null) {
+            return false;
+        }
+        return ward.notes().stream()
+                .anyMatch(note -> note.contains("non-numeric") ||
+                        note.contains("missing") ||
+                        note.contains("negative") ||
+                        note.contains("unrealistic"));
+    }
+
+    private static String buildIssueDescription(WardRecord ward) {
+        // Combine all notes into a single issue string.
+        return String.join("; ", ward.notes());
     }
 }
